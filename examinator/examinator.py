@@ -4,7 +4,7 @@
 import sys
 from pathlib import Path
 bllb_path = str(
-    Path(r"C:\Users\b_r_l\OneDrive\Documents\code\python\bllb\\").resolve())
+    Path(r"../../../code/python/bllb").resolve())
 sys.path.insert(0, bllb_path)
 from bllb import *
 
@@ -47,6 +47,28 @@ def proc_items(entry, depth=0):
         return list(map(proc_child, os.scandir(path)))
     else:
         return {str(path): get_md5(path)}
+
+
+dbg = log.debug
+
+
+def p2(it):
+    dbg(type(it))
+    if type(it) == str:
+        print(it)
+        return
+    try:
+        for key, value in it.items():
+            print(key, value)
+        dbg('iteritems')
+    except Exception as error:
+        dbg(error)
+        try:
+            for _ in it:
+                p2(_)
+        except Exception as error:
+            dbg(error)
+            print(it)
 
 
 def start_proc(basepaths):
