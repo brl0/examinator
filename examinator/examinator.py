@@ -40,35 +40,13 @@ def get_md5(file):
 
 def proc_items(entry, depth=0):
     path = Path(entry)
-    log.debug(path.resolve())
+    dbg(path.resolve())
     if path.is_dir():
-        log.debug(f'Processing: {depth} ({path.parent.name})| {path}')
+        dbg(f'\nProcessing: depth: {depth} ({path.parent.name})| {path}')
         proc_child = lambda child: proc_items(child, depth + 1)
         return list(map(proc_child, os.scandir(path)))
     else:
         return {str(path): get_md5(path)}
-
-
-dbg = log.debug
-
-
-def p2(it):
-    dbg(type(it))
-    if type(it) == str:
-        print(it)
-        return
-    try:
-        for key, value in it.items():
-            print(key, value)
-        dbg('iteritems')
-    except Exception as error:
-        dbg(error)
-        try:
-            for _ in it:
-                p2(_)
-        except Exception as error:
-            dbg(error)
-            print(it)
 
 
 def start_proc(basepaths):
