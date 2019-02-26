@@ -3,8 +3,7 @@
 
 import sys
 from pathlib import Path
-bllb_path = str(
-    Path(r"../../../code/python/bllb").resolve())
+bllb_path = str(Path(r"../../../code/python/bllb").resolve())
 sys.path.insert(0, bllb_path)
 from bllb import *
 
@@ -12,13 +11,16 @@ import os
 from random import random
 from hashlib import md5
 
-#from multiprocessing.dummy import Pool as ThreadPool
+#from multiprocessing import Pool
+#import asyncio
 
-#pool = ThreadPool(1)
+from multiprocessing.dummy import Pool
+from queue import Queue
 
+q = Queue()
 
-def start_log(lvl='WARNING'):
-    log = setup_logging(True, lvl)
+def start_log(lvl='WARNING', mp=False):
+    log = setup_logging(True, lvl, loguru_enqueue=mp)
     log.info('examinator logging started')
     return log
 
@@ -30,24 +32,35 @@ def file_as_blockiter(path, blocksize=65536):
             yield block
             block = file.read(blocksize)
 
-
-def get_md5(file):
+#async 
+def get_md5(path):
     hasher = md5()
-    for block in file_as_blockiter(file):
+    for block in file_as_blockiter(path):
         hasher.update(block)
+    dbg(f'\nhasher: {hasher.hexdigest()} {path.resolve()}')
     return hasher.hexdigest()
 
+#async 
+def proc_file(path):
+    dbg(f'proc_file: {path.resolve()}')
+    return {str(path): get_md5(path)}
 
-def proc_items(entry, depth=0):
-    path = Path(entry)
-    dbg(path.resolve())
-    if path.is_dir():
-        dbg(f'\nProcessing: depth: {depth} ({path.parent.name})| {path}')
-        proc_child = lambda child: proc_items(child, depth + 1)
-        return list(map(proc_child, os.scandir(path)))
+def proc(path):
+    dbg(f'{str(path.resolve())}')
+    if path.is_file():
+        dbg('call proc file')
+        return proc_file(path)
+        #return asyncio.run(proc_file(path))
+    elif path.is_dir():
+        dbg('proc dir')
+        #with Pool() as pool:
+        return {str(path.resolve()): [*map(proc, path.iterdir())]}
     else:
-        return {str(path): get_md5(path)}
+        log.warning(f'not a file or dir: {str(path)}')
 
 
 def start_proc(basepaths):
-    p(map(proc_items, basepaths))
+    #pool = Pool()
+    for path in basepaths:
+        pp({path: proc(path)})
+    

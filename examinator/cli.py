@@ -3,11 +3,11 @@
 """Console script for examinator."""
 
 import sys
+from pathlib import Path
 import click
 from examinator import start_proc, start_log
 
-log = start_log("DEBUG")
-
+log = start_log("DEBUG", mp=True)
 
 @click.command()
 @click.option(
@@ -34,8 +34,8 @@ def main(basepaths, file, a):
         basepaths = []
     if file:
         basepaths.append(file.read().split('\n'))
+    basepaths = map(Path, basepaths)
     start_proc(basepaths)
-
     elapsed = time.perf_counter() - s
     log.info(f"{__file__} executed in {elapsed:0.2f} seconds.")
     print('\n\nFIN\n\n')

@@ -1,17 +1,22 @@
 import sys
 from pathlib import Path
-bllb_path = str(
-    Path(r"C:\Users\b_r_l\OneDrive\Documents\code\python\bllb\\").resolve())
-sys.path.insert(0, bllb_path)
-from bllb import *
-
-print('imported bllb')
-print_sysinfo()
-
-p(sys.path)
-
 from examinator import *
 
 log = setup_logging()
 
 log.debug('test')
+
+from queue import Queue
+from multiprocessing.dummy import Pool
+q = Queue()
+
+q.put(Path('..'))
+
+with Pool() as pool:
+    while not q.empty():
+        item = q.get()
+        if item.is_dir():
+            pool.map(q.put, item.iterdir())
+        elif item.is_file():
+            print(str(item))
+
