@@ -10,20 +10,42 @@ from bllb import *
 import os
 from random import random
 from hashlib import md5
+import functools
 
-#from multiprocessing import Pool
-#import asyncio
+import asyncio
+import concurrent.futures
 
-from multiprocessing.dummy import Pool
-from queue import Queue
+WORKERS = 4
 
-q = Queue()
+from multiprocessing import Value, Array, Lock
+slept = Value('i', 0)
+starts = Value('i', 0)
+results_count = Value('i', 0)
+result_loop = Value('i', 0)
+worker_count = Value('i', 0)
+lock = Lock()
 
-def start_log(lvl='WARNING', mp=False):
-    log = setup_logging(True, lvl, loguru_enqueue=mp)
+from multiprocessing import Queue as pQueue
+from queue import Queue as tQueue
+
+holder = {
+    'mp_type': 'p',
+    'p': {
+        'Ex': concurrent.futures.ProcessPoolExecutor,
+        'q': pQueue(),
+        'r': pQueue()
+    },
+    't': {
+        'Ex': concurrent.futures.ThreadPoolExecutor,
+        'q': tQueue(),
+        'r': tQueue()
+    }
+}
+
+def start_log(enable=True, lvl='WARNING', mp=True):
+    log = setup_logging(enable, lvl, loguru_enqueue=mp)
     log.info('examinator logging started')
     return log
-
 
 def file_as_blockiter(path, blocksize=65536):
     with open(path, 'rb') as file:
@@ -32,35 +54,110 @@ def file_as_blockiter(path, blocksize=65536):
             yield block
             block = file.read(blocksize)
 
-#async 
-def get_md5(path):
+async def get_md5(path):
     hasher = md5()
     for block in file_as_blockiter(path):
         hasher.update(block)
     dbg(f'\nhasher: {hasher.hexdigest()} {path.resolve()}')
     return hasher.hexdigest()
 
-#async 
-def proc_file(path):
+async def proc_file(path):
     dbg(f'proc_file: {path.resolve()}')
-    return {str(path): get_md5(path)}
+    return {str(path): await get_md5(path)}
 
-def proc(path):
-    dbg(f'{str(path.resolve())}')
-    if path.is_file():
-        dbg('call proc file')
-        return proc_file(path)
-        #return asyncio.run(proc_file(path))
-    elif path.is_dir():
-        dbg('proc dir')
-        #with Pool() as pool:
-        return {str(path.resolve()): [*map(proc, path.iterdir())]}
-    else:
-        log.warning(f'not a file or dir: {str(path)}')
+def proc_paths(basepaths, mp_type='p'):
+    holder['mp_type'] = mp_type
+    dbg(f'mp_type: {mp_type}')
+    dbg(
+        f'holder["mp_type"]: {holder["mp_type"]}'
+    )
+    dbg(f'{holder}')
+    poolExecutor = holder[mp_type]['Ex']
+    q = holder[mp_type]['q']
+    r = holder[mp_type]['r']
 
+    dbg(f'count basepaths: {len(basepaths)}')
+    [*map(q.put, map(Path, basepaths))]
+    dbg(f'q size: {q.qsize()}')
 
-def start_proc(basepaths):
-    #pool = Pool()
-    for path in basepaths:
-        pp({path: proc(path)})
+    with poolExecutor(WORKERS) as pool:
+        dbg('got pool exec')
+        for i in range(WORKERS):
+            pool.submit(worker)
+        dbg('\npool submit done\n')
+        while not q.empty() or worker_count.value > 0:
+            dbg('still processing...')
+            asyncio.run(sleeper(.1))
+        pool.shutdown()
+
+    dbg('\n\nResults:\n\n')
+    while not r.empty() or not q.empty() or worker_count.value > 0:
+        with lock:
+            result_loop.value += 1
+        dbg(f'\nResult loop: {result_loop.value}')
+        if not r.empty():
+            result = r.get()
+            with lock:
+                results_count.value += 1
+            dbg(
+                f'result count: {results_count.value}'
+            )
+            pp(result)
+        else:
+            asyncio.run(sleeper(.1))
+    #pool.shutdown(True)
+    dbg('proc_paths complete')
+
+async def sleeper(seconds):
+    with lock:
+        slept.value += 1
+    dbg(
+        f'sleep count: {slept.value}'
+    )
+    await asyncio.sleep(seconds)
+
+def worker():
     
+    with lock:
+        worker_count.value += 1
+        pid = worker_count.value
+    dbg(f'worker_count: {worker_count.value}')
+    dbg(
+        f'holder["mp_type"]: {holder["mp_type"]}'
+    )
+    
+    mp_type = holder['mp_type']
+    q = holder[mp_type]['q']
+    r = holder[mp_type]['r']
+    units = 0
+
+    dbg(f'\nstarting worker: {pid} {os.getpid()}\n')
+    while q.empty() and starts.value < 20:
+        with lock:
+            starts.value += 1
+        log.warning(
+            f'worker {pid} {os.getpid()}, q is empty, restarts: {starts.value}'
+        )
+        asyncio.run(sleeper(.1))
+
+    if starts.value >= 20:
+        log.warning("problem starting worker")
+    else:
+        dbg(f'start worker count: {starts.value}')
+
+    while not q.empty():
+        item = q.get()
+        #dbg(f'worker {pid} loop processing item: {units} {str(item)}')
+        if item.is_file():
+            result = asyncio.run(proc_file(item))
+            #dbg(result)
+            r.put(result)
+        elif item.is_dir():
+            [*map(q.put, item.iterdir())]
+        else:
+            dbg(f'{pid} not a file or dir: {str(item)}')
+        units += 1
+    dbg(f'\n\nworker finished: {pid}\tunits: {units}\n\n')
+    with lock:
+        worker_count.value -= 1
+    dbg(f'worker_count: {worker_count.value}')
