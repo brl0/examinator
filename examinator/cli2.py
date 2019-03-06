@@ -5,7 +5,7 @@
 import sys
 from pathlib import Path
 import click
-from examinator2 import proc_paths, start_log
+from get_file_info import proc_paths, start_log
 
 LOGURU_ENQ = False
 LOG_ON = False
@@ -25,10 +25,10 @@ LOG_LEVEL = "WARNING"
 @click.option(
     '-m',
     '--mp',
-    default='t',
+    default='s',
     show_default=True,
-    help='Multiprocessing type, p for process, t for threading.',
-    type=click.Choice(['p', 't']))
+    help='Multiprocessing type, p: process, t: threading, d: distributed, s: synchronous.',
+    type=click.Choice(['p', 't', 'd', 's']))
 @click.option('-v', '--verbose', count=True)
 @click.argument('args', nargs=-1)
 def main(basepaths, file, mp, verbose, args):
