@@ -11,6 +11,7 @@ LOGURU_ENQ = False
 LOG_ON = False
 LOG_LEVEL = "WARNING"
 
+
 @click.command()
 @click.option(
     '-b',
@@ -19,12 +20,15 @@ LOG_LEVEL = "WARNING"
     help='Base path.',
     multiple=True,
     type=click.Path(exists=True))
-@click.option('-f', '--file', help='File path or - for stdin', type=click.File('r'))
-@click.option('-m', '--mp',
-              default='t',
-              show_default=True,
-              help='Multiprocessing type, p for process, t for threading.',
-              type=click.Choice(['p', 't']))
+@click.option(
+    '-f', '--file', help='File path or - for stdin', type=click.File('r'))
+@click.option(
+    '-m',
+    '--mp',
+    default='t',
+    show_default=True,
+    help='Multiprocessing type, p for process, t for threading.',
+    type=click.Choice(['p', 't']))
 @click.option('-v', '--verbose', count=True)
 @click.argument('args', nargs=-1)
 def main(basepaths, file, mp, verbose, args):
@@ -57,7 +61,7 @@ def main(basepaths, file, mp, verbose, args):
     proc_paths(basepaths, mp)
 
     elapsed = time.perf_counter() - s
-    log.info(f"{__file__} executed in {elapsed:0.2f} seconds.".format())
+    print(f"{__file__} executed in {elapsed:0.2f} seconds.".format())
     print('\n\nFIN\n\n')
 
     return 0

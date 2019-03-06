@@ -103,9 +103,19 @@ ENV/
 
 # BRL
 
-# VS Code
+# VS, VS Code
 *.code-workspace
+.vscode/
+.vs/
 
 # Backup files
 *.bak
 *.bak.*
+
+# Dask worker storage space
+dask-worker-space/
+examinator/dask-worker-space/worker-1auz_haz.dirlock
+examinator/dask-worker-space/worker-1ovjdmfo.dirlock
+examinator/dask-worker-space/worker-fzyk7r5i.dirlock
+examinator/dask-worker-space/worker-j52xf3_j.dirlock
+.vscode/settings.json

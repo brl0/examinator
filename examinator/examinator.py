@@ -11,6 +11,7 @@ import os
 from random import random
 from hashlib import md5
 import functools
+from pprint import pformat
 
 import asyncio
 import concurrent.futures
@@ -54,16 +55,16 @@ def file_as_blockiter(path, blocksize=65536):
             yield block
             block = file.read(blocksize)
 
-async def get_md5(path):
+def get_md5(path):
     hasher = md5()
     for block in file_as_blockiter(path):
         hasher.update(block)
     dbg(f'\nhasher: {hasher.hexdigest()} {path.resolve()}')
     return hasher.hexdigest()
 
-async def proc_file(path):
+def proc_file(path):
     dbg(f'proc_file: {path.resolve()}')
-    return {str(path): await get_md5(path)}
+    return {str(path): get_md5(path)}
 
 def proc_paths(basepaths, mp_type='p'):
     holder['mp_type'] = mp_type
@@ -71,11 +72,11 @@ def proc_paths(basepaths, mp_type='p'):
     dbg(
         f'holder["mp_type"]: {holder["mp_type"]}'
     )
-    dbg(f'{holder}')
+    dbg(f'holder\n{pformat(holder)}')
     poolExecutor = holder[mp_type]['Ex']
     q = holder[mp_type]['q']
     r = holder[mp_type]['r']
-
+    dbg(f"q type: {str(type(q))}")
     dbg(f'count basepaths: {len(basepaths)}')
     [*map(q.put, map(Path, basepaths))]
     dbg(f'q size: {q.qsize()}')
@@ -86,7 +87,7 @@ def proc_paths(basepaths, mp_type='p'):
             pool.submit(worker)
         dbg('\npool submit done\n')
         while not q.empty() or worker_count.value > 0:
-            dbg('still processing...')
+            dbg(f'Still processing. q.empty: {q.empty()}, worker_count: {worker_count.value}')
             asyncio.run(sleeper(.1))
         pool.shutdown()
 
@@ -117,7 +118,7 @@ async def sleeper(seconds):
     await asyncio.sleep(seconds)
 
 def worker():
-    
+    asyncio.run(sleeper(.1))
     with lock:
         worker_count.value += 1
         pid = worker_count.value
@@ -141,7 +142,7 @@ def worker():
         asyncio.run(sleeper(.1))
 
     if starts.value >= 20:
-        log.warning("problem starting worker")
+        log.warning(f"problem starting worker: {pid} {os.getpid()}")
     else:
         dbg(f'start worker count: {starts.value}')
 
@@ -149,7 +150,7 @@ def worker():
         item = q.get()
         #dbg(f'worker {pid} loop processing item: {units} {str(item)}')
         if item.is_file():
-            result = asyncio.run(proc_file(item))
+            result = proc_file(item)
             #dbg(result)
             r.put(result)
         elif item.is_dir():
@@ -160,4 +161,4 @@ def worker():
     dbg(f'\n\nworker finished: {pid}\tunits: {units}\n\n')
     with lock:
         worker_count.value -= 1
-    dbg(f'worker_count: {worker_count.value}')
+    dbg(f'worker exit, remaining worker_count: {worker_count.value}')
