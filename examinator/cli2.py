@@ -4,10 +4,10 @@
 
 import sys
 from pathlib import Path
+from operator import truth
 import click
-from get_file_info import proc_paths, start_log
+from get_file_info2 import proc_paths, start_log, pp
 
-LOGURU_ENQ = False
 LOG_ON = False
 LOG_LEVEL = "WARNING"
 
@@ -29,9 +29,10 @@ LOG_LEVEL = "WARNING"
     show_default=True,
     help='Multiprocessing type, p: process, t: threading, d: distributed, s: synchronous.',
     type=click.Choice(['p', 't', 'd', 's']))
+@click.option('--md5/--no-md5', default=True)
 @click.option('-v', '--verbose', count=True)
 @click.argument('args', nargs=-1)
-def main(basepaths, file, mp, verbose, args):
+def main(basepaths, file, mp, md5, verbose, args):
     """Console script for examinator."""
     # click documentation at http://click.pocoo.org/
     import time
@@ -43,12 +44,13 @@ def main(basepaths, file, mp, verbose, args):
         print('verbose')
         log_on = True
         log_level = max(4 - verbose, 1) * 10
-    log = start_log(log_on, log_level, mp=LOGURU_ENQ)
+    log = start_log(log_on, log_level)
     log.warning(f"\nlogs enabled: {log_on}\nlog_level: {log_level}")
     log.debug("basepaths: {}".format(basepaths))
     log.debug('{}'.format(str(type(file))))
+    log.debug(f'Calculate md5 hash: {md5}')
     log.debug('{}'.format(args))
-    time.sleep(0.05)
+    time.sleep(0.05)  # Sleep to let logging initiate
 
     if not basepaths:
         basepaths = []
@@ -58,7 +60,15 @@ def main(basepaths, file, mp, verbose, args):
     if file:
         basepaths += file.read().split('\n')
     log.debug(f"\n{str(type(basepaths))}\n{basepaths}\n")
-    proc_paths(basepaths, mp)
+    df = proc_paths(basepaths, mp, opt_md5=md5)
+    try:
+        pp(df.info())
+        fields = ['path', 'st_size']
+        if md5:
+            fields.append('md5')
+        pp(df.loc[:, fields])
+    except:
+        print('No results')
 
     elapsed = time.perf_counter() - s
     print(f"{__file__} executed in {elapsed:0.2f} seconds.".format())
