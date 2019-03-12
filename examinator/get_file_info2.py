@@ -68,23 +68,32 @@ class daskerator(object):
                 'Only distributed dask can accept scheduler address.')
 
     _client = attr.ib(default=None)
+    _cluster = attr.ib(default=None)
 
     def __attrs_post_init__(self):
         if self.mp_type[0] == 'd':
-            from dask.distributed import Client
+            from dask.distributed import Client, LocalCluster
             dbg("Creating distributed client object.")
             if self.sch_add == '':
                 dbg("Creating new cluster on localhost.")
-                self.client = Client()
+                self._cluster = LocalCluster()
+                self._client = Client(self._cluster)
             else:
                 dbg(f"Existing scheduler address: {self.sch_add}")
-                self.client = Client(self.sch_add)
-            log.info(self.client)
+                self._client = Client(self.sch_add)
+            log.info(self._client)
 
     @curry
     def run_dask(self, func, iterator):
         dbg(f'Scheduler: {self.mp_type}')
-        return compute(*map(delayed(func), iterator), scheduler=self.mp_type)
+        if self.mp_type[0] == 'd':
+            dbg('Using dask client')
+            return self._client.gather(
+                self._client.map(func, iterator))
+        else:
+            dbg('Not using dask client.')
+            return compute(
+                *map(delayed(func), iterator), scheduler=self.mp_type)
 
 
 def get_stat(path, opt_md5=True, opt_pid=False) -> dict:
@@ -113,7 +122,6 @@ def get_stat(path, opt_md5=True, opt_pid=False) -> dict:
                 info['md5'] = md5_hash
             except:
                 log.warning(f'Could not hash item: {str(path)}')
-                pass
         else:
             dbg(f'Item is a directory and will not be hashed.  {str(path)}')
     if opt_pid:
@@ -130,9 +138,9 @@ def path_stat_dask(dsk, path, opt_md5=True, opt_pid=False):
     path = Path(path)
     get_stat2 = lambda path: get_stat(path, opt_md5, opt_pid)
     if path.is_dir():
-        return pd.DataFrame(dsk.run_dask(get_stat2, tqdm(path.rglob('*'))))
+        return dsk.run_dask(get_stat2, tqdm(path.rglob('*')))
     else:
-        return pd.DataFrame(dsk.run_dask(get_stat2, [path]))
+        return dsk.run_dask(get_stat2, [path])
 
 
 def md5_blocks(path, blocksize=1024 * 2048) -> str:
@@ -158,11 +166,10 @@ def md5_blocks(path, blocksize=1024 * 2048) -> str:
 def proc_paths(basepaths, mp_type='s', opt_md5=True):
     dsk = daskerator(mp_type)
     path_stat_dask2 = lambda path: path_stat_dask(dsk, path, opt_md5=opt_md5)
-    df = pd.concat([*map(path_stat_dask2, basepaths)])
-    dbg(str(type(df)))
-    if len(df):
-        df.reset_index(inplace=True)
-        return df
+    result = [*map(path_stat_dask2, basepaths)]
+    dbg(str(type(result)))
+    if len(result):
+        return result
     else:
         log.info('No results.')
         return

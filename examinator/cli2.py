@@ -27,7 +27,8 @@ LOG_LEVEL = "WARNING"
     '--mp',
     default='s',
     show_default=True,
-    help='Multiprocessing type, p: process, t: threading, d: distributed, s: synchronous.',
+    help=
+    'Multiprocessing type, p: process, t: threading, d: distributed, s: synchronous.',
     type=click.Choice(['p', 't', 'd', 's']))
 @click.option('--md5/--no-md5', default=True)
 @click.option('-v', '--verbose', count=True)
@@ -60,13 +61,14 @@ def main(basepaths, file, mp, md5, verbose, args):
     if file:
         basepaths += file.read().split('\n')
     log.debug(f"\n{str(type(basepaths))}\n{basepaths}\n")
-    df = proc_paths(basepaths, mp, opt_md5=md5)
+    result = proc_paths(basepaths, mp, opt_md5=md5)
     try:
-        pp(df.info())
+        pp(result)
+        """pp(result.info())
         fields = ['path', 'st_size']
         if md5:
             fields.append('md5')
-        pp(df.loc[:, fields])
+        pp(result.loc[:, fields])"""
     except:
         print('No results')
 
