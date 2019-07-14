@@ -35,7 +35,7 @@ bllb_path = str(Path(r"../../../code/python/bllb").resolve())
 sys.path.insert(0, bllb_path)
 from bllb_logging import *
 
-from bllb import pp, hash_utf8
+from bllb import ppiter as pp, hash_utf8
 from pprint import pprint  #as pp
 
 LOG_ON = False
@@ -69,7 +69,7 @@ def md5_blocks(path, blocksize=1024 * 2048) -> str:
 
 
 def get_stat(path, opt_md5=True, opt_pid=False) -> dict:
-    dbg(path)
+    log.debug(path)
     try:
         path = Path(path)
         info = dict([
@@ -77,15 +77,13 @@ def get_stat(path, opt_md5=True, opt_pid=False) -> dict:
             if not _[0].startswith('_') and not inspect.isbuiltin(_[1])
         ])
         info.update(
-            dict([
-                _ for _ in inspect.getmembers(path)
-                if '__' not in _[0] and '<' not in str(_[1])
-            ]))
+            dict([(_[0], str(_[1])) for _ in inspect.getmembers(path)
+                  if '__' not in _[0] and '<' not in str(_[1])]))
         info.update(
-            dict([(_[0], methodcaller(_[0])(path))
+            dict([(str(_[0]), methodcaller(_[0])(path))
                   for _ in inspect.getmembers(path)
                   if _[0].startswith('is_') and _[0] != 'is_mount']))
-        info['path'] = path
+        info['path'] = str(path)
         info['path_hash'] = hash_utf8(str(path))
         info['f_atime'] = dt.datetime.fromtimestamp(info['st_atime'])
         info['f_ctime'] = dt.datetime.fromtimestamp(info['st_ctime'])
@@ -98,13 +96,16 @@ def get_stat(path, opt_md5=True, opt_pid=False) -> dict:
                 except:
                     log.warning(f'Could not hash item: {str(path)}')
             else:
-                dbg(f'Item is a directory and will not be hashed.  {str(path)}'
-                    )
+                log.debug(
+                    f'Item is a directory and will not be hashed.  {str(path)}'
+                )
         if opt_pid:
-            dbg(f"working using OS pid: {os.getpid()}, opt_pid: {opt_pid}")
+            log.debug(
+                f"working using OS pid: {os.getpid()}, opt_pid: {opt_pid}")
         return info
     except Exception as error:
         log.warning(error)
+        return {'path': str(path)}
 
 
 def glob_paths(path):
@@ -116,18 +117,6 @@ def glob_paths(path):
             return path
     except Exception as error:
         log.warning(error)
-
-
-def proc_paths(basepaths, opt_md5=True):
-    """proc_paths uses Dask client to map path_stat over basepaths."""
-    paths = chain.from_iterable(map(glob_paths, basepaths))
-    pstat = partial(get_stat, opt_md5=opt_md5, opt_pid=True)
-    results = client.map(pstat, paths)
-    data = client.gather(results)
-    df = pd.DataFrame(data)
-    #bag = db.from_sequence(results)
-    #data = client.persist(bag)
-    return df
 
 
 def load_dir(from_q, to_q, stop):
@@ -210,30 +199,12 @@ def get_dir(d):
         return [str(_) for _ in path.iterdir()]
 
 
-def proc_paths2(basepaths, opt_md5=True):
-    q = Queue()
-    remote_q = client.scatter(q)
-    q1, q2 = multiplex(2, remote_q)
-    list_q = client.map(get_dir, q1)
-    l_q = client.gather(list_q)
-    pstat = partial(get_stat, opt_md5=opt_md5, opt_pid=True)
-    q3 = client.map(pstat, q2)
-    result_q = client.gather(q3)
-
-    stop_threads = False
-    stop = lambda: stop_threads
-    [*map(q.put, basepaths)]
-    with ThreadPoolExecutor() as t:
-        t.submit(load_dir, l_q, q, stop)
-        results_future = t.submit(unloadq, result_q, limit=300)
-        results_list = results_future.result()
-        results = pd.DataFrame(results_list)
-        stop_threads = True
-
-    return results
+def iterq(q):
+    while q.qsize():
+        yield q.get()
 
 
-def proc_paths3(basepaths, opt_md5=True):
+def proc_paths(basepaths, output, opt_md5=True):
     q = Queue()
     remote_q = client.scatter(q)
     q1, q2 = multiplex(2, remote_q)
@@ -279,10 +250,22 @@ def proc_paths3(basepaths, opt_md5=True):
     type=click.Path(exists=True))
 @click.option(
     '-f', '--file', help='File path or - for stdin', type=click.File('r'))
+@click.option(
+    '-o',
+    '--output',
+    default='.',
+    help='Output path.',
+    multiple=False,
+    type=click.Path(
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        resolve_path=True))
 @click.option('--md5/--no-md5', default=True)
 @click.option('-v', '--verbose', count=True)
 @click.argument('args', nargs=-1)
-def main(basepaths, file, md5, verbose, args):
+def main(basepaths, output, file, md5, verbose, args):
     """Console script for examinator."""
     # click documentation at http://click.pocoo.org/
     s = time.perf_counter()
@@ -295,6 +278,7 @@ def main(basepaths, file, md5, verbose, args):
     log = start_log(log_on, log_level)
     log.warning(f"\nlogs enabled: {log_on}\nlog_level: {log_level}")
     log.debug("basepaths: {}".format(basepaths))
+    log.debug("output: {}".format(output))
     log.debug('{}'.format(str(type(file))))
     log.debug(f'Optional md5 hash: {md5}')
     log.debug('{}'.format(args))
@@ -311,7 +295,7 @@ def main(basepaths, file, md5, verbose, args):
     log.debug(client)
 
     try:
-        result = proc_paths3(basepaths, opt_md5=md5)
+        result = proc_paths(basepaths, output, opt_md5=md5)
         #print(result)
         print(str(type(result)), len(result))
         pp(result)
