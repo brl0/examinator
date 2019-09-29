@@ -227,13 +227,13 @@ def proc_paths(basepaths, output, opt_md5=True):
             alive = sum([_q.qsize() for _q in qs])
             if alive:
                 i = min(i + 1, ilimit)
-                print(alive, i)
+                log.debug(alive, i)
             else:
                 i -= 1
-                print(f'i: {i}')
+                log.debug(f'i: {i}')
             sleep(.1)
         stop_threads = True
-        #results_list = unloadq(result_q, limit=300)
+        # results_list = unloadq(result_q, limit=300)
         results_list = results_future.result()
         results = pd.DataFrame(results_list)
 
@@ -283,6 +283,11 @@ def main(basepaths, output, file, md5, verbose, args):
     log.debug(f'Optional md5 hash: {md5}')
     log.debug('{}'.format(args))
     time.sleep(0.05)  # Sleep to let logging initiate
+
+    global cluster, client
+    cluster = LocalCluster(processes=True)
+    client = Client(cluster)
+
     if not basepaths:
         basepaths = []
     else:
@@ -297,7 +302,7 @@ def main(basepaths, output, file, md5, verbose, args):
     try:
         result = proc_paths(basepaths, output, opt_md5=md5)
         #print(result)
-        print(str(type(result)), len(result))
+        log.debug(str(type(result)), len(result))
         pp(result)
         #print(result.info())
         #print(result.describe())
@@ -319,6 +324,4 @@ def main(basepaths, output, file, md5, verbose, args):
 
 
 if __name__ == "__main__":
-    cluster = LocalCluster(processes=True)
-    client = Client(cluster)
     sys.exit(main())  # pragma: no cover
